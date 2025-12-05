@@ -6,6 +6,7 @@ export const BREADCRUMB_ROUTE_MAP: Record<string, BreadcrumbEntry> = {
   "/": { label: "Dashboard" },
   "/campaigns": { label: "Campanhas" },
   "/campaigns/google": { label: "Google Ads" },
+  "/linkbio": { label: "Link na Bio" },
 };
 
 export function toTitleCase(value: string): string {

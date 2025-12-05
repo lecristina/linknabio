@@ -222,7 +222,7 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <a
-                    href="#"
+                    href="/linkbio"
                     className="flex items-center gap-3 p-3 hover:bg-white/10 transition-all duration-300 group rounded-lg"
                   >
                     <Link2

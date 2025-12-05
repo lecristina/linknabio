@@ -16,21 +16,23 @@ export async function middleware(request: NextRequest) {
     "/api/auth", // NextAuth API routes
   ];
 
+  // Verificar se é uma rota de slug (link na bio público)
+  // Padrão: qualquer rota que não comece com /api, /auth, /_next, etc
+  const isSlugRoute =
+    !pathname.startsWith("/api") &&
+    !pathname.startsWith("/auth") &&
+    !pathname.startsWith("/_next") &&
+    !pathname.startsWith("/campaigns") &&
+    !pathname.startsWith("/design_system") &&
+    pathname !== "/" &&
+    pathname.split("/").length === 2; // Apenas /[slug], não /[slug]/algo
+
   // Verificar se é uma rota pública
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
-  // Se é uma rota pública, permitir acesso
-  if (isPublicRoute) {
+  // Se é uma rota pública ou rota de slug, permitir acesso
+  if (isPublicRoute || isSlugRoute) {
     return NextResponse.next();
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_SUPABASE_URL;
-  const appKey = process.env.NEXT_PUBLIC_APP_SUPABASE_ANON_KEY;
-
-  if (!appUrl || !appKey) {
-    throw new Error(
-      "Missing required environment variables for APP Supabase. Please set NEXT_PUBLIC_APP_SUPABASE_URL and NEXT_PUBLIC_APP_SUPABASE_ANON_KEY in your .env.local file."
-    );
   }
 
   // Em modo de desenvolvimento com autenticação mockada, permitir acesso sem token
@@ -38,6 +40,24 @@ export async function middleware(request: NextRequest) {
 
   if (isMockedAuth) {
     return NextResponse.next();
+  }
+
+  // Verificar variáveis do Supabase apenas se não estiver em modo mockado
+  const appUrl = process.env.NEXT_PUBLIC_APP_SUPABASE_URL;
+  const appKey = process.env.NEXT_PUBLIC_APP_SUPABASE_ANON_KEY;
+
+  // Em desenvolvimento, apenas avisar mas não bloquear se as variáveis não estiverem configuradas
+  if (!appUrl || !appKey) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn(
+        "⚠️  Variáveis do Supabase APP não configuradas. Algumas funcionalidades podem não funcionar."
+      );
+      // Em desenvolvimento, permitir continuar mas redirecionar para login se não autenticado
+    } else {
+      throw new Error(
+        "Missing required environment variables for APP Supabase. Please set NEXT_PUBLIC_APP_SUPABASE_URL and NEXT_PUBLIC_APP_SUPABASE_ANON_KEY in your .env.local file."
+      );
+    }
   }
 
   // Verificar token apenas se não estiver em modo mocked

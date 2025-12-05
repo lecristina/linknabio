@@ -28,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body className={publicSans.className}>
+      <body className={publicSans.className} suppressHydrationWarning>
         <Providers>
           <Suspense fallback={null}>{children}</Suspense>
           <Analytics />

@@ -11,13 +11,16 @@ import AxolutionsSSO from "../providers/axolutions-sso";
 const clientId = process.env.SSO_CLIENT_ID;
 const nextAuthSecret = process.env.NEXTAUTH_SECRET;
 const nextAuthUrl = process.env.NEXTAUTH_URL || "http://localhost:3002";
+const isMockedAuth = process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_MOCKED_AUTH === "true";
 
-if (!clientId) {
-  throw new Error("Missing SSO_CLIENT_ID environment variable");
-}
+if (!isMockedAuth) {
+  if (!clientId) {
+    throw new Error("Missing SSO_CLIENT_ID environment variable");
+  }
 
-if (!nextAuthSecret) {
-  throw new Error("Missing NEXTAUTH_SECRET environment variable");
+  if (!nextAuthSecret) {
+    throw new Error("Missing NEXTAUTH_SECRET environment variable");
+  }
 }
 
 /**
@@ -69,12 +72,14 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
 
 export const authConfig: NextAuthOptions = {
   // Providers configuration
-  providers: [
-    AxolutionsSSO({
-      clientId: clientId!,
-      clientSecret: "", // PKCE flow - empty string required by NextAuth v4
-    }),
-  ],
+  providers: isMockedAuth
+    ? []
+    : [
+        AxolutionsSSO({
+          clientId: clientId!,
+          clientSecret: "", // PKCE flow - empty string required by NextAuth v4
+        }),
+      ],
 
   // Session configuration
   session: {
