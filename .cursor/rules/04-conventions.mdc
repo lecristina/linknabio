@@ -1,0 +1,826 @@
+---
+alwaysApply: true
+---
+
+# Axolutions Project Conventions
+
+## Overview
+Standardized conventions for code style, naming, organization, and development workflow across all Axolutions projects.
+
+## Code Style
+
+### No Comments Policy
+Comments should be avoided unless absolutely necessary. Code should be self-documenting through clear naming and structure.
+
+#### When Comments Are Acceptable
+- Complex algorithms that need explanation
+- API documentation for public interfaces
+- TODO markers for incomplete features
+- Warning notes about gotchas or edge cases
+- License headers
+
+#### ✅ GOOD: Self-Documenting Code
+```typescript
+function calculateOrderTotal(items: OrderItem[]): number {
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const tax = subtotal * TAX_RATE
+  const shipping = calculateShippingCost(items)
+
+  return subtotal + tax + shipping
+}
+```
+
+#### ❌ BAD: Over-Commented Code
+```typescript
+// Calculate the total price for an order
+function calculateOrderTotal(items: OrderItem[]): number {
+  // First, calculate the subtotal by multiplying price by quantity
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+  // Then add tax
+  const tax = subtotal * TAX_RATE
+
+  // Calculate shipping cost
+  const shipping = calculateShippingCost(items)
+
+  // Return the final total
+  return subtotal + tax + shipping
+}
+```
+
+### Error Handling Philosophy
+
+Per project guidelines: "Avoid empty defensive programming, error handling, and commenting unless it is necessary for an AI to pick up on later. It is ok to let the application break."
+
+#### When to Add Error Handling
+```typescript
+// ✅ GOOD: Handle external API errors
+async function fetchUserFromExternalAPI(userId: string): Promise<ExternalUser> {
+  try {
+    const response = await fetch(`https://api.external.com/users/${userId}`)
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Failed to fetch user from external API:', error)
+    throw error
+  }
+}
+
+// ✅ GOOD: Validate user input
+function validateEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') {
+    throw new ValidationError('Email is required')
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+  if (!emailRegex.test(email)) {
+    throw new ValidationError('Invalid email format')
+  }
+
+  return true
+}
+```
+
+#### When NOT to Add Error Handling
+```typescript
+// ❌ BAD: Defensive null checks everywhere
+function getUserName(user: User): string {
+  if (!user) {
+    return ''
+  }
+
+  if (!user.name) {
+    return ''
+  }
+
+  return user.name
+}
+
+// ✅ GOOD: Trust the type system
+function getUserName(user: User): string {
+  return user.name
+}
+
+// ❌ BAD: Empty try-catch blocks
+async function loadData() {
+  try {
+    const data = await fetchData()
+    return data
+  } catch (error) {
+    return null
+  }
+}
+
+// ✅ GOOD: Let errors propagate
+async function loadData() {
+  return await fetchData()
+}
+```
+
+## Naming Conventions
+
+### Files and Folders
+
+#### Components
+```
+PascalCase.tsx         # Component files
+UserProfile.tsx
+DashboardCard.tsx
+NavigationMenu.tsx
+```
+
+#### Pages (App Router)
+```
+kebab-case/           # Route folders
+  page.tsx            # Page component
+  layout.tsx          # Layout component
+  loading.tsx         # Loading component
+  error.tsx           # Error component
+
+Examples:
+/user-profile/page.tsx
+/dashboard/settings/page.tsx
+/api/user-data/route.ts
+```
+
+#### Services and Utilities
+```
+PascalCase.ts         # Service files
+UserService.ts
+ProductService.ts
+CheckoutService.ts
+
+camelCase.ts          # Utility files
+permissions.ts
+validation.ts
+formatting.ts
+```
+
+### Variables and Functions
+
+```typescript
+// Variables: camelCase
+const userName = "John"
+const isAuthenticated = true
+const userProfile = {}
+
+// Functions: camelCase (verb-based)
+function calculateTotal() {}
+function getUserById() {}
+function validateEmail() {}
+function formatCurrency() {}
+
+// Boolean functions: is/has/can prefix
+function isValidEmail() {}
+function hasPermission() {}
+function canAccessResource() {}
+
+// Constants: SCREAMING_SNAKE_CASE
+const MAX_RETRY_ATTEMPTS = 3
+const API_BASE_URL = "https://api.example.com"
+const DEFAULT_PAGE_SIZE = 20
+
+// Private class members: prefix with underscore (optional)
+class UserService {
+  private _repository: UserRepository
+
+  private _validateInput(data: any) {}
+}
+```
+
+### Types and Interfaces
+
+```typescript
+// Interfaces and Types: PascalCase
+interface UserProfile {
+  id: string
+  name: string
+  email: string
+}
+
+type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered'
+
+// Enum: PascalCase
+enum UserRole {
+  Admin = 'admin',
+  User = 'user',
+  Guest = 'guest'
+}
+
+// Generic types: Single uppercase letter or descriptive PascalCase
+function map<T>(items: T[]): T[] {}
+function transform<TInput, TOutput>(input: TInput): TOutput {}
+```
+
+### Component Props
+
+```typescript
+// Props interfaces: ComponentNameProps
+interface UserProfileProps {
+  userId: string
+  showEmail?: boolean
+  onUpdate?: (user: User) => void
+}
+
+export function UserProfile({ userId, showEmail = true, onUpdate }: UserProfileProps) {
+  // Component implementation
+}
+
+// Event handlers: handle prefix
+interface ButtonProps {
+  onClick?: () => void
+  onSubmit?: (data: FormData) => void
+  onError?: (error: Error) => void
+}
+
+// Boolean props: is/has/can/should prefix
+interface CardProps {
+  isActive?: boolean
+  hasHeader?: boolean
+  canClose?: boolean
+  shouldAnimate?: boolean
+}
+```
+
+## Project-Specific Conventions
+
+### PageTitle Component
+Every page MUST use the PageTitle component for consistency.
+
+```typescript
+import { PageTitle } from "@/components/PageTitle"
+
+export default function DashboardPage() {
+  return (
+    <div className="container py-8">
+      <PageTitle
+        title="Dashboard"
+        description="Overview of your account activity"
+      />
+
+      {/* Page content */}
+    </div>
+  )
+}
+```
+
+### Breadcrumbs
+Every new page MUST have breadcrumb configuration updated in `lib/breadcrumbs.ts`.
+
+```typescript
+// lib/breadcrumbs.ts
+export const breadcrumbs: Record<string, Breadcrumb[]> = {
+  '/dashboard': [
+    { label: 'Home', href: '/' },
+    { label: 'Dashboard', href: '/dashboard' }
+  ],
+  '/dashboard/users': [
+    { label: 'Home', href: '/' },
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Users', href: '/dashboard/users' }
+  ],
+  '/dashboard/users/[id]': [
+    { label: 'Home', href: '/' },
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Users', href: '/dashboard/users' },
+    { label: 'User Details', href: '/dashboard/users/[id]' }
+  ],
+}
+```
+
+### Database Schema
+
+#### DO NOT Create Users Table
+Never create a `users` table. Use `profiles` table instead for user-related data.
+
+```typescript
+// ❌ WRONG - Don't create users table
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+// ✅ CORRECT - Use profiles table
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique // Reference to external SSO user
+  avatar    String?
+  bio       String?
+  settings  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+#### Getting Current User
+Always use `useAuth()` hook to get authenticated user information.
+
+```typescript
+"use client"
+
+import { useAuth } from "@/hooks/useAuth"
+
+export function UserDashboard() {
+  const { user, isAuthenticated } = useAuth()
+
+  if (!isAuthenticated) {
+    return <LoginPrompt />
+  }
+
+  return (
+    <div>
+      <h1>Welcome, {user.name}!</h1>
+      <p>Email: {user.email}</p>
+    </div>
+  )
+}
+```
+
+## TypeScript Conventions
+
+### Type vs Interface
+Use `interface` for object shapes that might be extended. Use `type` for unions, intersections, and primitives.
+
+```typescript
+// Use interface for object shapes
+interface User {
+  id: string
+  name: string
+  email: string
+}
+
+// Extend interfaces
+interface AdminUser extends User {
+  permissions: string[]
+}
+
+// Use type for unions
+type Status = 'active' | 'inactive' | 'pending'
+
+// Use type for complex types
+type Result<T> = { success: true; data: T } | { success: false; error: string }
+
+// Use type for utility types
+type Nullable<T> = T | null
+type Optional<T> = T | undefined
+```
+
+### Avoid `any`
+Never use `any` type. Use `unknown` if type is truly unknown.
+
+```typescript
+// ❌ BAD: Using any
+function processData(data: any) {
+  return data.value
+}
+
+// ✅ GOOD: Use unknown with type guards
+function processData(data: unknown) {
+  if (typeof data === 'object' && data !== null && 'value' in data) {
+    return (data as { value: any }).value
+  }
+  throw new Error('Invalid data format')
+}
+
+// ✅ BETTER: Use proper types
+interface DataWithValue {
+  value: string
+}
+
+function processData(data: DataWithValue) {
+  return data.value
+}
+```
+
+### Strict Null Checks
+Enable strict null checks in `tsconfig.json`.
+
+```typescript
+// ✅ GOOD: Handle null/undefined explicitly
+function getUserName(user: User | null): string {
+  if (!user) {
+    return 'Guest'
+  }
+  return user.name
+}
+
+// ✅ GOOD: Use optional chaining
+const userName = user?.profile?.name ?? 'Guest'
+
+// ✅ GOOD: Use nullish coalescing
+const port = process.env.PORT ?? 3000
+```
+
+## Import Conventions
+
+### Import Order
+1. External dependencies
+2. Internal aliases (@/...)
+3. Relative imports
+4. Types (if separate)
+
+```typescript
+// 1. External dependencies
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+
+// 2. Internal aliases
+import { Button } from '@/components/ui/button'
+import { UserService } from '@/services/user/UserService'
+import { useAuth } from '@/hooks/useAuth'
+
+// 3. Relative imports
+import { UserCard } from './UserCard'
+import { formatDate } from '../utils/date'
+
+// 4. Types (if importing separately)
+import type { User } from '@/types/user'
+```
+
+### Path Aliases
+Use configured path aliases instead of relative imports.
+
+```typescript
+// tsconfig.json
+{
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/lib/*": ["./src/lib/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/services/*": ["./src/services/*"],
+      "@/types/*": ["./src/types/*"]
+    }
+  }
+}
+
+// ❌ BAD: Relative imports
+import { Button } from '../../../components/ui/button'
+import { useAuth } from '../../hooks/useAuth'
+
+// ✅ GOOD: Path aliases
+import { Button } from '@/components/ui/button'
+import { useAuth } from '@/hooks/useAuth'
+```
+
+## React Conventions
+
+### Component Structure
+```typescript
+// 1. Imports
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import type { User } from '@/types/user'
+
+// 2. Types/Interfaces
+interface UserCardProps {
+  user: User
+  onEdit?: (user: User) => void
+}
+
+// 3. Component
+export function UserCard({ user, onEdit }: UserCardProps) {
+  // 3a. Hooks
+  const [isEditing, setIsEditing] = useState(false)
+
+  // 3b. Event handlers
+  const handleEdit = () => {
+    setIsEditing(true)
+    onEdit?.(user)
+  }
+
+  // 3c. Render helpers (if needed)
+  const renderActions = () => (
+    <Button onClick={handleEdit}>Edit</Button>
+  )
+
+  // 3d. Return JSX
+  return (
+    <div className="card">
+      <h2>{user.name}</h2>
+      <p>{user.email}</p>
+      {renderActions()}
+    </div>
+  )
+}
+```
+
+### Custom Hooks
+```typescript
+// hooks/useUser.ts
+export function useUser(userId: string) {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  useEffect(() => {
+    async function fetchUser() {
+      try {
+        setLoading(true)
+        const response = await fetch(`/api/users/${userId}`)
+        const data = await response.json()
+        setUser(data)
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error('Unknown error'))
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUser()
+  }, [userId])
+
+  return { user, loading, error }
+}
+```
+
+### Props Destructuring
+Destructure props in function signature for clarity.
+
+```typescript
+// ✅ GOOD: Destructure in signature
+export function UserCard({ user, onEdit, isActive = false }: UserCardProps) {
+  return <div>{user.name}</div>
+}
+
+// ❌ BAD: Access via props object
+export function UserCard(props: UserCardProps) {
+  return <div>{props.user.name}</div>
+}
+```
+
+## API Route Conventions
+
+### RESTful Patterns
+```typescript
+// GET /api/users - List users
+export async function GET(request: Request) {}
+
+// POST /api/users - Create user
+export async function POST(request: Request) {}
+
+// GET /api/users/[id] - Get specific user
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {}
+
+// PATCH /api/users/[id] - Update user
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {}
+
+// DELETE /api/users/[id] - Delete user
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {}
+```
+
+### Response Patterns
+```typescript
+import { NextResponse } from 'next/server'
+
+// Success response
+return NextResponse.json(data, { status: 200 })
+
+// Created response
+return NextResponse.json(data, { status: 201 })
+
+// No content
+return new NextResponse(null, { status: 204 })
+
+// Bad request
+return NextResponse.json(
+  { error: 'Invalid input' },
+  { status: 400 }
+)
+
+// Unauthorized
+return NextResponse.json(
+  { error: 'Unauthorized' },
+  { status: 401 }
+)
+
+// Forbidden
+return NextResponse.json(
+  { error: 'Forbidden' },
+  { status: 403 }
+)
+
+// Not found
+return NextResponse.json(
+  { error: 'Resource not found' },
+  { status: 404 }
+)
+
+// Server error
+return NextResponse.json(
+  { error: 'Internal server error' },
+  { status: 500 }
+)
+```
+
+## Git Conventions
+
+### Commit Messages
+Follow conventional commits format.
+
+```bash
+# Format
+<type>(<scope>): <subject>
+
+# Types
+feat:     # New feature
+fix:      # Bug fix
+docs:     # Documentation only
+style:    # Code style (formatting, missing semicolons, etc)
+refactor: # Code change that neither fixes bug nor adds feature
+perf:     # Performance improvement
+test:     # Adding or updating tests
+chore:    # Maintenance tasks
+
+# Examples
+feat(auth): add SSO integration
+fix(api): correct user data endpoint
+docs(readme): update installation instructions
+refactor(services): extract payment logic to service
+style(components): format with prettier
+perf(database): optimize user query
+test(auth): add login flow tests
+chore(deps): update next to 14.0.0
+```
+
+### Branch Naming
+```bash
+# Format
+<type>/<ticket-id>-<short-description>
+
+# Examples
+feature/AX-123-add-user-dashboard
+fix/AX-124-correct-login-redirect
+refactor/AX-125-improve-service-layer
+docs/AX-126-update-api-documentation
+```
+
+## Environment Variables
+
+### Naming Convention
+```env
+# Use SCREAMING_SNAKE_CASE
+DATABASE_URL=
+NEXTAUTH_SECRET=
+SSO_CLIENT_ID=
+
+# Group by service/feature
+STRIPE_PUBLIC_KEY=
+STRIPE_SECRET_KEY=
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Environment-specific
+NEXT_PUBLIC_APP_URL=
+NEXT_PUBLIC_API_URL=
+```
+
+### Public vs Private
+Prefix public variables with `NEXT_PUBLIC_`:
+
+```env
+# Server-only (secure)
+DATABASE_URL=
+API_SECRET_KEY=
+
+# Client-accessible (public)
+NEXT_PUBLIC_APP_URL=
+NEXT_PUBLIC_STRIPE_KEY=
+```
+
+## Testing Conventions
+
+### Test File Naming
+```
+Component.test.tsx    # Component tests
+service.test.ts       # Service tests
+utils.test.ts         # Utility tests
+api.test.ts          # API route tests
+```
+
+### Test Structure
+```typescript
+describe('UserService', () => {
+  describe('getById', () => {
+    it('should return user when found', async () => {
+      const userService = new UserService()
+      const user = await userService.getById('user-123')
+
+      expect(user).toBeDefined()
+      expect(user.id).toBe('user-123')
+    })
+
+    it('should throw error when user not found', async () => {
+      const userService = new UserService()
+
+      await expect(
+        userService.getById('invalid-id')
+      ).rejects.toThrow('User not found')
+    })
+  })
+})
+```
+
+## Documentation
+
+### Function Documentation (When Needed)
+Only document complex or public API functions:
+
+```typescript
+/**
+ * Processes a checkout transaction including payment, inventory, and notifications.
+ *
+ * @param params - Checkout parameters
+ * @param params.userId - ID of the user making the purchase
+ * @param params.items - Array of items to purchase
+ * @param params.paymentMethod - Payment method to use
+ * @returns Checkout result with order ID and status
+ * @throws {ValidationError} If items are invalid or unavailable
+ * @throws {PaymentError} If payment processing fails
+ */
+async function processCheckout(params: CheckoutParams): Promise<CheckoutResult> {
+  // Implementation
+}
+```
+
+### README Structure
+```markdown
+# Project Name
+
+Brief description of the project
+
+## Prerequisites
+- Node.js 18+
+- PostgreSQL 14+
+
+## Installation
+```bash
+npm install
+```
+
+## Configuration
+Copy `.env.example` to `.env.local` and fill in values
+
+## Development
+```bash
+npm run dev
+```
+
+## Testing
+```bash
+npm test
+```
+
+## Deployment
+Instructions for deployment
+
+## Project Structure
+Brief overview of directory structure
+```
+
+## Checklist
+
+### New Feature Checklist
+- [ ] Types defined in `types/` directory
+- [ ] Service layer implemented if needed
+- [ ] API routes follow security patterns
+- [ ] Components follow single responsibility
+- [ ] PageTitle component used on pages
+- [ ] Breadcrumbs updated in `lib/breadcrumbs.ts`
+- [ ] No comments unless absolutely necessary
+- [ ] Error handling only where needed
+- [ ] TypeScript strict mode compliant
+- [ ] No `any` types used
+- [ ] Tests written for business logic
+- [ ] Environment variables documented
+
+### Code Review Checklist
+- [ ] Follows naming conventions
+- [ ] No unnecessary comments
+- [ ] No defensive programming
+- [ ] Components are focused and small
+- [ ] Services separate from routes
+- [ ] No exposed IDs in URLs
+- [ ] Session-based authentication used
+- [ ] TypeScript strict mode passing
+- [ ] No `any` types
+- [ ] Imports properly organized
+- [ ] Error handling appropriate

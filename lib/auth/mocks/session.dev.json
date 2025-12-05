@@ -1,0 +1,19 @@
+{
+  "user": {
+    "id": "dev-user-1",
+    "sub": "dev-user-1",
+    "email": "anna.marcela@agmail.com",
+    "name": "Anna Marcela",
+    "avatar": "",
+    "email_verified": true,
+    "products": [],
+    "created_at": "2024-01-01T12:00:00.000Z",
+    "external_id": "ext-axol-999",
+    "last_login": "2024-06-24T08:33:00.000Z",
+    "password": null,
+    "site_branch_name": "matriz",
+    "status": "active",
+    "updated_at": "2024-06-24T10:00:00.000Z",
+    "website_url": "https://plataforma.axolutions.com"
+  }
+}

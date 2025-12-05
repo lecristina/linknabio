@@ -1,0 +1,682 @@
+---
+alwaysApply: true
+---
+
+# Axolutions SSO Authentication Rules
+
+## Overview
+Integration guidelines for authenticating with Axolutions SSO using OAuth 2.0 Authorization Code Flow with PKCE (Proof Key for Code Exchange).
+
+## Core Principles
+
+### Security First
+- ALWAYS use HTTPS in production
+- NEVER expose sensitive IDs or tokens in URLs
+- NEVER trust client-side data
+- ALWAYS validate sessions on the server
+- NEVER store access tokens in localStorage for sensitive data
+- ALWAYS use httpOnly, secure cookies for tokens
+- ALWAYS implement PKCE for enhanced security
+- ALWAYS validate the state parameter to prevent CSRF
+
+### Zero Trust Architecture
+- Authenticate every request on the server
+- Verify user authorization for every protected resource
+- Never rely on client-side authentication alone
+- Assume all client data is potentially malicious
+
+## OAuth 2.0 Flow
+
+### 1. Authorization Request
+```typescript
+// Generate PKCE verifier and challenge
+import crypto from 'crypto'
+
+function generateCodeVerifier(): string {
+  return crypto.randomBytes(32).toString('base64url')
+}
+
+function generateCodeChallenge(verifier: string): string {
+  return crypto.createHash('sha256').update(verifier).digest('base64url')
+}
+
+// Store verifier securely (server-side session or httpOnly cookie)
+const codeVerifier = generateCodeVerifier()
+const codeChallenge = generateCodeChallenge(codeVerifier)
+
+// Build authorization URL
+const authUrl = new URL('https://sso.axolutions.com/api/oauth/authorize')
+authUrl.searchParams.set('client_id', process.env.SSO_CLIENT_ID!)
+authUrl.searchParams.set('redirect_uri', `${process.env.APP_URL}/api/auth/callback`)
+authUrl.searchParams.set('response_type', 'code')
+authUrl.searchParams.set('code_challenge', codeChallenge)
+authUrl.searchParams.set('code_challenge_method', 'S256')
+authUrl.searchParams.set('state', generateRandomState())
+```
+
+### 2. Token Exchange
+```typescript
+// Exchange authorization code for tokens
+async function exchangeCodeForTokens(code: string, codeVerifier: string) {
+  const response = await fetch('https://sso.axolutions.com/api/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: `${process.env.APP_URL}/api/auth/callback`,
+      client_id: process.env.SSO_CLIENT_ID,
+      code_verifier: codeVerifier
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error('Token exchange failed')
+  }
+
+  return await response.json()
+}
+```
+
+### 3. Fetch User Info
+```typescript
+async function fetchUserInfo(accessToken: string) {
+  const response = await fetch('https://sso.axolutions.com/api/oauth/userinfo', {
+    headers: { 'Authorization': `Bearer ${accessToken}` }
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch user info')
+  }
+
+  return await response.json()
+}
+```
+
+### 4. Refresh Token
+```typescript
+async function refreshAccessToken(refreshToken: string) {
+  const response = await fetch('https://sso.axolutions.com/api/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: process.env.SSO_CLIENT_ID
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error('Token refresh failed')
+  }
+
+  return await response.json()
+}
+```
+
+## Next.js Integration with NextAuth.js
+
+### Installation
+```bash
+npm install next-auth
+```
+
+### Configuration
+```typescript
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth, { NextAuthOptions } from "next-auth"
+import { JWT } from "next-auth/jwt"
+
+const authOptions: NextAuthOptions = {
+  providers: [
+    {
+      id: "axolutions-sso",
+      name: "Axolutions SSO",
+      type: "oauth",
+      wellKnown: "https://sso.axolutions.com/.well-known/openid-configuration",
+      authorization: {
+        url: "https://sso.axolutions.com/api/oauth/authorize",
+        params: {
+          scope: "openid email profile",
+          response_type: "code",
+          code_challenge_method: "S256",
+        }
+      },
+      token: "https://sso.axolutions.com/api/oauth/token",
+      userinfo: "https://sso.axolutions.com/api/oauth/userinfo",
+      clientId: process.env.SSO_CLIENT_ID!,
+      checks: ["pkce", "state"],
+      profile(profile: any) {
+        return {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          image: profile.avatar,
+          products: profile.products,
+        }
+      },
+    },
+  ],
+  callbacks: {
+    async jwt({ token, account, profile }) {
+      if (account) {
+        token.accessToken = account.access_token
+        token.refreshToken = account.refresh_token
+        token.expiresAt = account.expires_at
+      }
+
+      if (profile) {
+        token.products = profile.products
+      }
+
+      // Refresh token if expired
+      if (Date.now() > (token.expiresAt as number) * 1000) {
+        try {
+          const refreshedTokens = await refreshAccessToken(token.refreshToken as string)
+          token.accessToken = refreshedTokens.access_token
+          token.refreshToken = refreshedTokens.refresh_token
+          token.expiresAt = Date.now() / 1000 + refreshedTokens.expires_in
+        } catch (error) {
+          return { ...token, error: "RefreshAccessTokenError" }
+        }
+      }
+
+      return token
+    },
+    async session({ session, token }) {
+      if (token.error) {
+        throw new Error("Session invalid, please re-authenticate")
+      }
+
+      session.accessToken = token.accessToken as string
+      session.user.products = token.products as any[]
+      return session
+    },
+  },
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  pages: {
+    signIn: '/login',
+    error: '/auth/error',
+  },
+}
+
+const handler = NextAuth(authOptions)
+export { handler as GET, handler as POST }
+```
+
+### Environment Variables
+```env
+# .env.local
+SSO_CLIENT_ID=your-client-id-here
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=generate-a-random-secret-key
+
+# Production
+# NEXTAUTH_URL=https://your-app.com
+```
+
+### Type Definitions
+```typescript
+// types/next-auth.d.ts
+import NextAuth from "next-auth"
+
+declare module "next-auth" {
+  interface Session {
+    accessToken?: string
+    user: {
+      id: string
+      name?: string | null
+      email?: string | null
+      image?: string | null
+      products?: Array<{
+        product: {
+          id: string
+          name: string
+          slug: string
+        }
+        role: {
+          id: string
+          name: string
+          permissions: string[]
+        }
+      }>
+    }
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    accessToken?: string
+    refreshToken?: string
+    expiresAt?: number
+    products?: any[]
+    error?: string
+  }
+}
+```
+
+## Client-Side Usage
+
+### Authentication Hooks
+```typescript
+"use client"
+
+import { useSession, signIn, signOut } from "next-auth/react"
+
+export default function Dashboard() {
+  const { data: session, status } = useSession()
+
+  if (status === "loading") {
+    return <div>Loading...</div>
+  }
+
+  if (!session) {
+    return (
+      <div>
+        <h1>Not authenticated</h1>
+        <button onClick={() => signIn("axolutions-sso")}>
+          Sign in with Axolutions SSO
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <h1>Welcome, {session.user.name}!</h1>
+      <p>Email: {session.user.email}</p>
+
+      <h2>Your Products:</h2>
+      <ul>
+        {session.user.products?.map((access) => (
+          <li key={access.product.id}>
+            {access.product.name} - Role: {access.role.name}
+          </li>
+        ))}
+      </ul>
+
+      <button onClick={() => signOut()}>Sign out</button>
+    </div>
+  )
+}
+```
+
+### Route Protection (Middleware)
+```typescript
+// middleware.ts
+export { default } from "next-auth/middleware"
+
+export const config = {
+  matcher: [
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/api/protected/:path*"
+  ]
+}
+```
+
+### Server-Side Session Check
+```typescript
+// app/dashboard/page.tsx
+import { getServerSession } from "next-auth"
+import { redirect } from "next/navigation"
+
+export default async function DashboardPage() {
+  const session = await getServerSession()
+
+  if (!session) {
+    redirect('/login')
+  }
+
+  return <div>Protected content</div>
+}
+```
+
+## API Route Protection
+
+### Correct Pattern (Session-Based)
+```typescript
+// app/api/users/info/route.ts
+import { getServerSession } from "next-auth"
+import { NextResponse } from "next/server"
+
+export async function GET(request: Request) {
+  // Get authenticated user from session
+  const session = await getServerSession()
+
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Use session user ID - NEVER trust URL parameters
+  const userId = session.user.id
+
+  // Fetch user data
+  const user = await getUserById(userId)
+
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  }
+
+  return NextResponse.json(user)
+}
+```
+
+### Incorrect Pattern (NEVER DO THIS)
+```typescript
+// ❌ WRONG - Exposes user ID in URL
+// app/api/users/[id]/info/route.ts
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  // ❌ INSECURE - Trusts ID from URL
+  const user = await getUserById(params.id)
+  return NextResponse.json(user)
+}
+```
+
+## Permission Validation
+
+### Permission Checker Utility
+```typescript
+// lib/permissions.ts
+export interface UserProduct {
+  product: {
+    id: string
+    name: string
+    slug: string
+  }
+  role: {
+    id: string
+    name: string
+    permissions: string[]
+  }
+}
+
+export function hasProductAccess(
+  user: { products?: UserProduct[] },
+  productSlug: string
+): boolean {
+  return user.products?.some(
+    (access) => access.product.slug === productSlug
+  ) ?? false
+}
+
+export function hasPermission(
+  user: { products?: UserProduct[] },
+  productSlug: string,
+  permission: string
+): boolean {
+  const access = user.products?.find(
+    (access) => access.product.slug === productSlug
+  )
+
+  if (!access) return false
+
+  return access.role.permissions.includes(permission)
+}
+
+export function hasRole(
+  user: { products?: UserProduct[] },
+  productSlug: string,
+  roleName: string
+): boolean {
+  const access = user.products?.find(
+    (access) => access.product.slug === productSlug
+  )
+
+  return access?.role.name === roleName
+}
+```
+
+### Usage in API Routes
+```typescript
+// app/api/blog/posts/route.ts
+import { getServerSession } from "next-auth"
+import { hasPermission } from "@/lib/permissions"
+import { NextResponse } from "next/server"
+
+export async function POST(request: Request) {
+  const session = await getServerSession()
+
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Check if user has write permission for blog product
+  if (!hasPermission(session.user, 'blog-manager', 'write')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // Proceed with creating post
+  const body = await request.json()
+  const post = await createPost(body)
+
+  return NextResponse.json(post)
+}
+```
+
+### Usage in Server Components
+```typescript
+// app/admin/page.tsx
+import { getServerSession } from "next-auth"
+import { hasRole } from "@/lib/permissions"
+import { redirect } from "next/navigation"
+
+export default async function AdminPage() {
+  const session = await getServerSession()
+
+  if (!session || !hasRole(session.user, 'blog-manager', 'admin')) {
+    redirect('/unauthorized')
+  }
+
+  return <div>Admin content</div>
+}
+```
+
+## Session Management
+
+### useAuth Hook (Custom)
+```typescript
+// hooks/useAuth.ts
+"use client"
+
+import { useSession } from "next-auth/react"
+import { hasPermission, hasRole, hasProductAccess } from "@/lib/permissions"
+
+export function useAuth() {
+  const { data: session, status } = useSession()
+
+  return {
+    user: session?.user,
+    isAuthenticated: !!session,
+    isLoading: status === "loading",
+    hasPermission: (productSlug: string, permission: string) =>
+      session ? hasPermission(session.user, productSlug, permission) : false,
+    hasRole: (productSlug: string, roleName: string) =>
+      session ? hasRole(session.user, productSlug, roleName) : false,
+    hasProductAccess: (productSlug: string) =>
+      session ? hasProductAccess(session.user, productSlug) : false,
+  }
+}
+```
+
+### Usage Example
+```typescript
+"use client"
+
+import { useAuth } from "@/hooks/useAuth"
+
+export default function BlogEditor() {
+  const { user, hasPermission } = useAuth()
+
+  const canEdit = hasPermission('blog-manager', 'write')
+  const canDelete = hasPermission('blog-manager', 'delete')
+
+  return (
+    <div>
+      {canEdit && <button>Edit Post</button>}
+      {canDelete && <button>Delete Post</button>}
+    </div>
+  )
+}
+```
+
+## Security Best Practices
+
+### DO's
+- ✅ Always validate sessions on the server
+- ✅ Use PKCE for OAuth flow
+- ✅ Store tokens in httpOnly, secure cookies
+- ✅ Validate state parameter to prevent CSRF
+- ✅ Implement token refresh logic
+- ✅ Use short-lived access tokens (1 hour)
+- ✅ Validate permissions on every protected route
+- ✅ Log authentication attempts for auditing
+- ✅ Use environment variables for sensitive data
+- ✅ Implement rate limiting on auth endpoints
+
+### DON'Ts
+- ❌ Never expose CLIENT_ID publicly in client code
+- ❌ Never store access tokens in localStorage
+- ❌ Never trust user IDs from URL parameters
+- ❌ Never skip state validation
+- ❌ Never disable SSL/TLS validation
+- ❌ Never log tokens or sensitive data
+- ❌ Never allow unregistered redirect URIs
+- ❌ Never expose tokens in URLs or logs
+- ❌ Never trust client-side authorization checks alone
+- ❌ Never share sessions across subdomains without validation
+
+## Error Handling
+
+### Authentication Errors
+```typescript
+// app/auth/error/page.tsx
+"use client"
+
+import { useSearchParams } from "next/navigation"
+
+export default function AuthError() {
+  const searchParams = useSearchParams()
+  const error = searchParams.get('error')
+
+  const errorMessages: Record<string, string> = {
+    Configuration: 'There is a problem with the server configuration.',
+    AccessDenied: 'You do not have permission to sign in.',
+    Verification: 'The verification token has expired or has already been used.',
+    Default: 'An error occurred during authentication.',
+  }
+
+  return (
+    <div>
+      <h1>Authentication Error</h1>
+      <p>{errorMessages[error || 'Default']}</p>
+      <a href="/login">Try again</a>
+    </div>
+  )
+}
+```
+
+### Token Refresh Error Handling
+```typescript
+// In JWT callback
+if (Date.now() > (token.expiresAt as number) * 1000) {
+  try {
+    const refreshedTokens = await refreshAccessToken(token.refreshToken as string)
+    return {
+      ...token,
+      accessToken: refreshedTokens.access_token,
+      refreshToken: refreshedTokens.refresh_token,
+      expiresAt: Date.now() / 1000 + refreshedTokens.expires_in,
+    }
+  } catch (error) {
+    console.error('Token refresh failed:', error)
+    return {
+      ...token,
+      error: "RefreshAccessTokenError",
+    }
+  }
+}
+```
+
+## Testing
+
+### Mock Session for Testing
+```typescript
+// __tests__/utils/mockSession.ts
+import { Session } from "next-auth"
+
+export function createMockSession(overrides?: Partial<Session>): Session {
+  return {
+    user: {
+      id: "test-user-id",
+      name: "Test User",
+      email: "test@example.com",
+      products: [
+        {
+          product: {
+            id: "product-id",
+            name: "Test Product",
+            slug: "test-product"
+          },
+          role: {
+            id: "role-id",
+            name: "admin",
+            permissions: ["read", "write", "delete"]
+          }
+        }
+      ],
+    },
+    expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    ...overrides,
+  }
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Invalid redirect_uri
+**Cause:** Callback URL not registered in SSO
+**Solution:** Contact Axolutions team to register the exact callback URL including protocol, domain, and port
+
+#### Invalid code_verifier
+**Cause:** PKCE verifier mismatch
+**Solution:** Ensure code_verifier is stored securely before redirect and used in token exchange
+
+#### Token expired
+**Cause:** Access token expired (1 hour lifetime)
+**Solution:** Implement automatic token refresh using refresh_token
+
+#### User not found
+**Cause:** User doesn't have access to the product
+**Solution:** Admin must grant user access in SSO dashboard
+
+## Registration Checklist
+
+Before going to production:
+- [ ] Received CLIENT_ID from Axolutions team
+- [ ] Registered all callback URLs (dev and prod)
+- [ ] Configured environment variables
+- [ ] Implemented PKCE flow
+- [ ] Implemented token refresh
+- [ ] Added permission validation
+- [ ] Tested login flow in development
+- [ ] Tested logout flow
+- [ ] Tested permission checks
+- [ ] Configured production URLs
+- [ ] Tested in production environment
+- [ ] Documented for team
+- [ ] Set up error monitoring
+
+## Support Resources
+
+- SSO Documentation: https://docs.axolutions.com/sso
+- Support Email: suporte@axolutions.com
+- Slack Channel: #sso-suporte

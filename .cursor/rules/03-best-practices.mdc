@@ -1,0 +1,923 @@
+---
+alwaysApply: true
+---
+
+# Axolutions Best Practices Rules
+
+## Overview
+Core architectural principles and best practices for building maintainable, secure, and scalable Next.js applications following Single Responsibility Principle and clean architecture patterns.
+
+## Core Principles
+
+### 1. Single Responsibility Principle
+Every component, function, and module should have ONE clear, well-defined responsibility.
+
+### 2. Separation of Concerns
+- **Components**: UI presentation only
+- **API Routes**: Thin controllers (validation, orchestration)
+- **Services**: Business logic and data orchestration
+- **Repositories**: Data access layer
+- **Utils**: Pure utility functions
+
+### 3. Security First
+- Never trust client input
+- Always validate on the server
+- Never expose sensitive data in URLs
+- Authenticate and authorize on every request
+
+## Component Architecture
+
+### Single Responsibility in Components
+
+#### ✅ CORRECT: Small, Focused Components
+```typescript
+// components/header/Header.tsx
+export function Header() {
+  return (
+    <header className="sticky top-0 z-50 border-b bg-background">
+      <div className="container flex h-16 items-center justify-between">
+        <Logo />
+        <Navigation />
+        <UserMenu />
+      </div>
+    </header>
+  )
+}
+
+// components/header/Logo.tsx
+export function Logo() {
+  return (
+    <Link href="/" className="flex items-center gap-2">
+      <Image src="/logo.svg" alt="Logo" width={32} height={32} />
+      <span className="font-bold text-xl">Axolutions</span>
+    </Link>
+  )
+}
+
+// components/header/Navigation.tsx
+export function Navigation() {
+  const navItems = [
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/products", label: "Products" },
+    { href: "/settings", label: "Settings" },
+  ]
+
+  return (
+    <nav className="flex items-center gap-6">
+      {navItems.map((item) => (
+        <NavigationLink key={item.href} href={item.href}>
+          {item.label}
+        </NavigationLink>
+      ))}
+    </nav>
+  )
+}
+
+// components/header/NavigationLink.tsx
+export function NavigationLink({
+  href,
+  children
+}: {
+  href: string
+  children: React.ReactNode
+}) {
+  const pathname = usePathname()
+  const isActive = pathname === href
+
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "text-sm font-medium transition-colors hover:text-primary",
+        isActive ? "text-foreground" : "text-muted-foreground"
+      )}
+    >
+      {children}
+    </Link>
+  )
+}
+
+// components/header/UserMenu.tsx
+export function UserMenu() {
+  const { user } = useAuth()
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger>
+        <UserAvatar user={user} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <UserMenuContent user={user} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+```
+
+#### ❌ INCORRECT: Monolithic Component
+```typescript
+// ❌ DON'T DO THIS - Everything in one component
+export function Header() {
+  const { user } = useAuth()
+  const pathname = usePathname()
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <header>
+      <div>
+        <Link href="/">
+          <img src="/logo.svg" />
+          <span>Axolutions</span>
+        </Link>
+      </div>
+
+      <nav>
+        <Link
+          href="/dashboard"
+          className={pathname === "/dashboard" ? "active" : ""}
+        >
+          Dashboard
+        </Link>
+        {/* More inline navigation */}
+      </nav>
+
+      <div>
+        <Avatar src={user.avatar} />
+        <div className={isOpen ? "show" : "hide"}>
+          {/* Inline dropdown menu */}
+          <button onClick={logout}>Logout</button>
+          <Link href="/profile">Profile</Link>
+        </div>
+      </div>
+    </header>
+  )
+}
+```
+
+### Component Organization Guidelines
+
+#### DO's
+- ✅ Create new components fearlessly - small is better
+- ✅ One responsibility per component
+- ✅ Extract repeated UI patterns into reusable components
+- ✅ Group related components in folders
+- ✅ Use composition over props drilling
+- ✅ Keep components under 150 lines of code
+- ✅ Extract complex logic into custom hooks
+
+#### DON'Ts
+- ❌ Don't create "god components" with multiple responsibilities
+- ❌ Don't inline complex JSX - extract to components
+- ❌ Don't mix data fetching with presentation
+- ❌ Don't duplicate UI patterns - create reusable components
+
+### File Organization Pattern
+
+```
+components/
+├── header/
+│   ├── Header.tsx              # Main composition component
+│   ├── Logo.tsx                # Logo component
+│   ├── Navigation.tsx          # Navigation wrapper
+│   ├── NavigationLink.tsx      # Individual nav link
+│   ├── UserMenu.tsx            # User menu dropdown
+│   ├── UserAvatar.tsx          # Avatar component
+│   └── UserMenuContent.tsx     # Menu content
+├── dashboard/
+│   ├── DashboardLayout.tsx     # Layout component
+│   ├── StatsCard.tsx           # Stats display card
+│   ├── RecentActivity.tsx      # Activity list
+│   └── QuickActions.tsx        # Action buttons
+└── ui/
+    └── [shadcn components]     # Base UI components
+```
+
+## API Route Architecture
+
+### Security Pattern: Session-Based Access
+
+#### ✅ CORRECT: Session-Based Authorization
+```typescript
+// app/api/users/profile/route.ts
+import { getServerSession } from "next-auth"
+import { NextResponse } from "next/server"
+import { UserService } from "@/services/user/UserService"
+
+export async function GET(request: Request) {
+  const session = await getServerSession()
+
+  if (!session) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
+
+  try {
+    const userService = new UserService()
+    const profile = await userService.getProfile(session.user.id)
+
+    return NextResponse.json(profile)
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to fetch profile' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(request: Request) {
+  const session = await getServerSession()
+
+  if (!session) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
+
+  const body = await request.json()
+
+  try {
+    const userService = new UserService()
+    const updatedProfile = await userService.updateProfile(
+      session.user.id,
+      body
+    )
+
+    return NextResponse.json(updatedProfile)
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to update profile' },
+      { status: 500 }
+    )
+  }
+}
+```
+
+#### ❌ INCORRECT: URL-Based Access (INSECURE)
+```typescript
+// ❌ NEVER DO THIS - Exposes user ID in URL
+// app/api/users/[userId]/profile/route.ts
+export async function GET(
+  request: Request,
+  { params }: { params: { userId: string } }
+) {
+  // ❌ SECURITY RISK - Anyone can access any user's data
+  const profile = await getUserProfile(params.userId)
+  return NextResponse.json(profile)
+}
+
+// ❌ NEVER call endpoints like this from frontend
+fetch(`/api/users/${userId}/profile`)
+```
+
+### API Route Pattern: Thin Controllers
+
+#### ✅ CORRECT: Delegate to Services
+```typescript
+// app/api/checkout/route.ts
+import { getServerSession } from "next-auth"
+import { NextResponse } from "next/server"
+import { CheckoutService } from "@/services/checkout/CheckoutService"
+import { hasPermission } from "@/lib/permissions"
+
+export async function POST(request: Request) {
+  const session = await getServerSession()
+
+  if (!session) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
+
+  if (!hasPermission(session.user, 'shop', 'checkout')) {
+    return NextResponse.json(
+      { error: 'Forbidden' },
+      { status: 403 }
+    )
+  }
+
+  const body = await request.json()
+
+  try {
+    const checkoutService = new CheckoutService()
+    const result = await checkoutService.processCheckout({
+      userId: session.user.id,
+      items: body.items,
+      paymentMethod: body.paymentMethod
+    })
+
+    return NextResponse.json(result, { status: 201 })
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 400 }
+      )
+    }
+
+    console.error('Checkout error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+```
+
+#### ❌ INCORRECT: Business Logic in Route
+```typescript
+// ❌ DON'T DO THIS - All logic in the route handler
+export async function POST(request: Request) {
+  const session = await getServerSession()
+  const body = await request.json()
+
+  // ❌ Business logic mixed with HTTP concerns
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id }
+  })
+
+  const items = await prisma.item.findMany({
+    where: { id: { in: body.items.map(i => i.id) } }
+  })
+
+  let total = 0
+  for (const item of items) {
+    total += item.price * body.items.find(i => i.id === item.id).quantity
+  }
+
+  if (user.balance < total) {
+    return NextResponse.json({ error: 'Insufficient funds' }, { status: 400 })
+  }
+
+  const order = await prisma.order.create({
+    data: {
+      userId: user.id,
+      total,
+      items: {
+        create: items.map(item => ({
+          itemId: item.id,
+          quantity: body.items.find(i => i.id === item.id).quantity,
+          price: item.price
+        }))
+      }
+    }
+  })
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { balance: user.balance - total }
+  })
+
+  await sendOrderConfirmationEmail(user, order)
+
+  return NextResponse.json(order)
+}
+```
+
+## Service Layer Architecture
+
+### Service Pattern: Business Logic Layer
+
+#### ✅ CORRECT: Service-Based Architecture
+```typescript
+// services/checkout/CheckoutService.ts
+import { UserService } from "@/services/user/UserService"
+import { InventoryService } from "@/services/inventory/InventoryService"
+import { PaymentService } from "@/services/payment/PaymentService"
+import { OrderService } from "@/services/order/OrderService"
+import { NotificationService } from "@/services/notification/NotificationService"
+
+export class CheckoutService {
+  constructor(
+    private userService = new UserService(),
+    private inventoryService = new InventoryService(),
+    private paymentService = new PaymentService(),
+    private orderService = new OrderService(),
+    private notificationService = new NotificationService()
+  ) {}
+
+  async processCheckout({
+    userId,
+    items,
+    paymentMethod
+  }: CheckoutInput): Promise<CheckoutResult> {
+    const user = await this.userService.getById(userId)
+
+    if (!user) {
+      throw new ValidationError('User not found')
+    }
+
+    const availableItems = await this.inventoryService.validateAvailability(items)
+
+    if (availableItems.length !== items.length) {
+      throw new ValidationError('Some items are not available')
+    }
+
+    const total = this.calculateTotal(availableItems, items)
+
+    const paymentResult = await this.paymentService.processPayment({
+      userId: user.id,
+      amount: total,
+      method: paymentMethod
+    })
+
+    if (!paymentResult.success) {
+      throw new PaymentError('Payment failed')
+    }
+
+    const order = await this.orderService.create({
+      userId: user.id,
+      items: availableItems,
+      total,
+      paymentId: paymentResult.id
+    })
+
+    await this.inventoryService.decrementStock(items)
+
+    await this.notificationService.sendOrderConfirmation(user, order)
+
+    return {
+      orderId: order.id,
+      total,
+      status: 'confirmed'
+    }
+  }
+
+  private calculateTotal(
+    availableItems: InventoryItem[],
+    requestedItems: CheckoutItem[]
+  ): number {
+    return availableItems.reduce((total, item) => {
+      const requestedItem = requestedItems.find(i => i.id === item.id)
+      return total + (item.price * (requestedItem?.quantity || 0))
+    }, 0)
+  }
+}
+```
+
+#### Service Organization
+```typescript
+// services/user/UserService.ts
+export class UserService {
+  constructor(private userRepository = new UserRepository()) {}
+
+  async getById(userId: string): Promise<User | null> {
+    return this.userRepository.findById(userId)
+  }
+
+  async getProfile(userId: string): Promise<UserProfile> {
+    const user = await this.userRepository.findById(userId)
+
+    if (!user) {
+      throw new NotFoundError('User not found')
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      createdAt: user.createdAt
+    }
+  }
+
+  async updateProfile(
+    userId: string,
+    data: UpdateProfileInput
+  ): Promise<UserProfile> {
+    const user = await this.userRepository.findById(userId)
+
+    if (!user) {
+      throw new NotFoundError('User not found')
+    }
+
+    const updated = await this.userRepository.update(userId, {
+      name: data.name,
+      avatar: data.avatar
+    })
+
+    return this.getProfile(updated.id)
+  }
+}
+```
+
+### Service Guidelines
+
+#### DO's
+- ✅ One service per domain/bounded context
+- ✅ Services orchestrate other services
+- ✅ Services contain business logic
+- ✅ Services are testable in isolation
+- ✅ Inject dependencies (Repository, other Services)
+- ✅ Return domain objects, not database records
+- ✅ Throw domain-specific errors
+- ✅ Keep services focused on one responsibility
+
+#### DON'Ts
+- ❌ Don't put HTTP concerns in services
+- ❌ Don't access database directly in services (use repositories)
+- ❌ Don't make services too large (split into multiple)
+- ❌ Don't mix unrelated business logic
+- ❌ Don't return raw Prisma/database objects
+
+## Repository Pattern
+
+### Data Access Layer
+
+#### ✅ CORRECT: Repository Pattern
+```typescript
+// repositories/UserRepository.ts
+import { prisma } from "@/lib/prisma"
+import { User, CreateUserInput } from "@/types/user"
+
+export class UserRepository {
+  async findById(id: string): Promise<User | null> {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        profile: true,
+        products: {
+          include: {
+            product: true,
+            role: true
+          }
+        }
+      }
+    })
+
+    return user ? this.mapToUser(user) : null
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        profile: true,
+        products: true
+      }
+    })
+
+    return user ? this.mapToUser(user) : null
+  }
+
+  async create(data: CreateUserInput): Promise<User> {
+    const user = await prisma.user.create({
+      data: {
+        email: data.email,
+        name: data.name,
+        profile: {
+          create: {
+            avatar: data.avatar
+          }
+        }
+      },
+      include: {
+        profile: true
+      }
+    })
+
+    return this.mapToUser(user)
+  }
+
+  async update(id: string, data: Partial<User>): Promise<User> {
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+      include: {
+        profile: true
+      }
+    })
+
+    return this.mapToUser(user)
+  }
+
+  private mapToUser(prismaUser: any): User {
+    return {
+      id: prismaUser.id,
+      email: prismaUser.email,
+      name: prismaUser.name,
+      avatar: prismaUser.profile?.avatar,
+      createdAt: prismaUser.createdAt,
+      updatedAt: prismaUser.updatedAt
+    }
+  }
+}
+```
+
+### Repository Guidelines
+
+#### DO's
+- ✅ One repository per aggregate root
+- ✅ Abstract database implementation details
+- ✅ Map database records to domain objects
+- ✅ Provide methods for common queries
+- ✅ Handle database errors appropriately
+- ✅ Use transactions for complex operations
+
+#### DON'Ts
+- ❌ Don't expose Prisma/database models directly
+- ❌ Don't put business logic in repositories
+- ❌ Don't create repositories for join tables
+- ❌ Don't mix multiple aggregate concerns
+
+## Project Structure
+
+### Recommended Directory Structure
+
+```
+src/
+├── app/
+│   ├── (auth)/                     # Auth group routes
+│   │   ├── login/
+│   │   └── register/
+│   ├── (dashboard)/                # Dashboard group routes
+│   │   ├── dashboard/
+│   │   ├── products/
+│   │   └── settings/
+│   ├── api/                        # API routes
+│   │   ├── auth/
+│   │   ├── users/
+│   │   └── products/
+│   ├── globals.css
+│   └── layout.tsx
+├── components/
+│   ├── ui/                         # shadcn components
+│   ├── header/                     # Header components
+│   ├── dashboard/                  # Dashboard components
+│   ├── products/                   # Product components
+│   └── shared/                     # Shared components
+├── services/
+│   ├── user/
+│   │   ├── UserService.ts
+│   │   └── UserRepository.ts
+│   ├── product/
+│   │   ├── ProductService.ts
+│   │   └── ProductRepository.ts
+│   └── checkout/
+│       └── CheckoutService.ts
+├── lib/
+│   ├── prisma.ts                   # Prisma client
+│   ├── auth.ts                     # Auth utilities
+│   ├── permissions.ts              # Permission checks
+│   ├── utils.ts                    # General utilities
+│   └── breadcrumbs.ts              # Breadcrumb config
+├── hooks/
+│   ├── useAuth.ts
+│   ├── usePermissions.ts
+│   └── useUser.ts
+├── types/
+│   ├── user.ts
+│   ├── product.ts
+│   └── next-auth.d.ts
+└── middleware.ts
+```
+
+## Code Quality Rules
+
+### General Guidelines
+
+#### DO's
+- ✅ Use TypeScript strict mode
+- ✅ Write self-documenting code with clear names
+- ✅ Keep functions small and focused
+- ✅ Extract magic numbers to named constants
+- ✅ Use early returns to reduce nesting
+- ✅ Handle errors appropriately
+- ✅ Validate input data
+- ✅ Use environment variables for configuration
+
+#### DON'Ts
+- ❌ Don't use comments unless absolutely necessary
+- ❌ Don't write defensive programming unless needed
+- ❌ Don't over-engineer solutions
+- ❌ Don't duplicate code
+- ❌ Don't use `any` type
+- ❌ Don't ignore TypeScript errors
+- ❌ Don't commit commented-out code
+
+### Naming Conventions
+
+```typescript
+// Components: PascalCase
+export function UserProfile() {}
+
+// Functions: camelCase
+function calculateTotal() {}
+
+// Constants: SCREAMING_SNAKE_CASE
+const MAX_RETRY_ATTEMPTS = 3
+
+// Types/Interfaces: PascalCase
+interface UserProfile {}
+type ProductStatus = 'active' | 'inactive'
+
+// Files: kebab-case for pages, PascalCase for components
+// user-profile.tsx (page)
+// UserProfile.tsx (component)
+// UserService.ts (service)
+```
+
+## Database Guidelines
+
+### DO's
+- ✅ Use profiles table instead of users table
+- ✅ Get authenticated user from `useAuth()` hook
+- ✅ Use Prisma for database access
+- ✅ Create indexes for frequently queried fields
+- ✅ Use transactions for related operations
+- ✅ Handle unique constraint violations
+
+### DON'Ts
+- ❌ Don't create a users table - use profiles
+- ❌ Don't query user data from URL parameters
+- ❌ Don't skip database constraints
+- ❌ Don't store sensitive data unencrypted
+
+## Page Structure
+
+### Page Component Pattern
+
+```typescript
+// app/dashboard/page.tsx
+import { getServerSession } from "next-auth"
+import { redirect } from "next/navigation"
+import { PageTitle } from "@/components/PageTitle"
+import { DashboardStats } from "@/components/dashboard/DashboardStats"
+import { RecentActivity } from "@/components/dashboard/RecentActivity"
+
+export default async function DashboardPage() {
+  const session = await getServerSession()
+
+  if (!session) {
+    redirect('/login')
+  }
+
+  return (
+    <div className="container py-8">
+      <PageTitle
+        title="Dashboard"
+        description="Overview of your account activity"
+      />
+
+      <div className="mt-8 grid gap-6">
+        <DashboardStats userId={session.user.id} />
+        <RecentActivity userId={session.user.id} />
+      </div>
+    </div>
+  )
+}
+```
+
+### Breadcrumb Configuration
+
+```typescript
+// lib/breadcrumbs.ts
+export const breadcrumbs: Record<string, Breadcrumb[]> = {
+  '/dashboard': [
+    { label: 'Home', href: '/' },
+    { label: 'Dashboard', href: '/dashboard' }
+  ],
+  '/dashboard/products': [
+    { label: 'Home', href: '/' },
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Products', href: '/dashboard/products' }
+  ],
+  '/dashboard/products/[id]': [
+    { label: 'Home', href: '/' },
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Products', href: '/dashboard/products' },
+    { label: 'Product Details', href: '/dashboard/products/[id]' }
+  ],
+}
+```
+
+### Page Requirements
+- ✅ Every page must use `PageTitle` component
+- ✅ Every new page must have breadcrumb configuration in `lib/breadcrumbs.ts`
+- ✅ Update breadcrumbs when adding new routes
+
+## Error Handling
+
+### Custom Error Classes
+
+```typescript
+// lib/errors.ts
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ValidationError'
+  }
+}
+
+export class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NotFoundError'
+  }
+}
+
+export class UnauthorizedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UnauthorizedError'
+  }
+}
+
+export class PaymentError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PaymentError'
+  }
+}
+```
+
+### Error Handling in Services
+
+```typescript
+// services/product/ProductService.ts
+export class ProductService {
+  async getById(productId: string): Promise<Product> {
+    const product = await this.productRepository.findById(productId)
+
+    if (!product) {
+      throw new NotFoundError(`Product with ID ${productId} not found`)
+    }
+
+    return product
+  }
+
+  async create(data: CreateProductInput): Promise<Product> {
+    if (!data.name || !data.price) {
+      throw new ValidationError('Name and price are required')
+    }
+
+    if (data.price <= 0) {
+      throw new ValidationError('Price must be greater than zero')
+    }
+
+    return this.productRepository.create(data)
+  }
+}
+```
+
+## Testing Philosophy
+
+### "Let It Break" Approach
+Per project guidelines: "Avoid empty defensive programming, error handling, and commenting unless it is necessary for an AI to pick up on later. It is ok to let the application break."
+
+#### When to Add Error Handling
+- ✅ User input validation
+- ✅ External API calls
+- ✅ Database operations that might fail
+- ✅ Payment processing
+- ✅ File operations
+
+#### When NOT to Add Error Handling
+- ❌ Don't add try-catch blocks "just in case"
+- ❌ Don't validate internal function arguments
+- ❌ Don't handle errors that should crash the app
+- ❌ Don't add excessive null checks
+
+## Checklist
+
+### Component Checklist
+- [ ] Component has single responsibility
+- [ ] Component is under 150 lines
+- [ ] Complex logic extracted to hooks
+- [ ] Related components grouped in folders
+- [ ] UI patterns extracted to reusable components
+
+### API Route Checklist
+- [ ] Uses session-based authentication
+- [ ] Never exposes IDs in URLs
+- [ ] Validates permissions before operations
+- [ ] Delegates business logic to services
+- [ ] Returns appropriate HTTP status codes
+- [ ] Handles errors appropriately
+
+### Service Checklist
+- [ ] One service per domain
+- [ ] No HTTP concerns
+- [ ] Uses repositories for data access
+- [ ] Testable in isolation
+- [ ] Dependencies injected
+- [ ] Returns domain objects
+- [ ] Throws domain-specific errors
+
+### Security Checklist
+- [ ] All protected routes use session validation
+- [ ] Permissions checked on server
+- [ ] No sensitive data in URLs
+- [ ] Input validation on all API routes
+- [ ] CSRF protection enabled
+- [ ] Rate limiting implemented
+
+### Page Checklist
+- [ ] Uses PageTitle component
+- [ ] Breadcrumbs configured in lib/breadcrumbs.ts
+- [ ] Server-side authentication check
+- [ ] Proper loading and error states
+- [ ] Responsive design implemented
