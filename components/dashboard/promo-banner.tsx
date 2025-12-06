@@ -25,7 +25,7 @@ export function Header() {
                 />
               </div>
             </a>
-            <span className="text-lg font-bold text-white leading-none">Analytics</span>
+            <span className="text-lg font-bold text-white leading-none">Link na Bio</span>
           </div>
 
           <div className="flex items-center gap-4">

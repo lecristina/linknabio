@@ -3,11 +3,20 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/hooks/use-auth";
 import { Greeting } from "@/components/dashboard/greeting";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DiscoverProducts } from "@/components/dashboard/discover-products";
 import { ManageCampaigns } from "@/components/dashboard/manage-campaigns";
+import { useEffect } from "react";
 
 export default function DashboardPage() {
   const { user, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user) {
+      router?.push("/linkbio");
+    }
+  }, [user]);
 
   if (isLoading) {
     return (
