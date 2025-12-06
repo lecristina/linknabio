@@ -41,9 +41,18 @@ const errorMessages: Record<string, { title: string; message: string; action?: s
 
 export default function AuthErrorPage() {
   const searchParams = useSearchParams();
-  const error = searchParams.get("error") as keyof typeof errorMessages;
+  const errorType = searchParams.get("error");
+  const errorMessage = searchParams.get("message");
 
-  const errorMessage = errorMessages[error] || errorMessages.Default;
+  // Try to match error type or use Default
+  const errorKey = (errorType && errorType in errorMessages 
+    ? errorType 
+    : "Default") as keyof typeof errorMessages;
+  
+  const errorConfig = errorMessages[errorKey];
+
+  // Use custom message from SSO if available, otherwise use default
+  const displayMessage = errorMessage || errorConfig.message;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -52,14 +61,32 @@ export default function AuthErrorPage() {
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-red-100">
             <AlertCircle className="h-6 w-6 text-red-600" />
           </div>
-          <CardTitle className="text-2xl text-red-600">Erro de Autenticação</CardTitle>
+          <CardTitle className="text-2xl text-red-600">{errorConfig.title}</CardTitle>
           <CardDescription>Não foi possível fazer login na sua conta</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{errorMessage}</AlertDescription>
+            <AlertDescription className="space-y-2">
+              <p>{displayMessage}</p>
+              {errorConfig.action && (
+                <p className="text-sm font-medium">{errorConfig.action}</p>
+              )}
+            </AlertDescription>
           </Alert>
+
+          {errorKey === "AccessDenied" && (
+            <Alert>
+              <AlertDescription className="text-sm">
+                <strong>Como obter acesso:</strong>
+                <ol className="mt-2 ml-4 list-decimal space-y-1">
+                  <li>Acesse o portal do administrador</li>
+                  <li>Solicite permissão para este produto</li>
+                  <li>Aguarde a aprovação do administrador</li>
+                </ol>
+              </AlertDescription>
+            </Alert>
+          )}
 
           <div className="flex flex-col gap-2">
             <Button asChild>
