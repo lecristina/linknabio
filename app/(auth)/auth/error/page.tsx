@@ -45,10 +45,10 @@ export default function AuthErrorPage() {
   const errorMessage = searchParams.get("message");
 
   // Try to match error type or use Default
-  const errorKey = (errorType && errorType in errorMessages 
-    ? errorType 
+  const errorKey = (errorType && errorType in errorMessages
+    ? errorType
     : "Default") as keyof typeof errorMessages;
-  
+
   const errorConfig = errorMessages[errorKey];
 
   // Use custom message from SSO if available, otherwise use default
