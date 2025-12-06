@@ -57,6 +57,21 @@ export default function AxolutionsSSO(
       async request(context) {
         const { provider, params, checks } = context;
 
+        // Check for OAuth errors in callback params (before token exchange)
+        if (params.error) {
+          const errorDescription = params.error_description || params.error;
+
+          // Map common OAuth errors to user-friendly messages
+          const errorMessages: Record<string, string> = {
+            access_denied: "Você não tem permissão para acessar este produto. Entre em contato com o administrador.",
+            invalid_request: "Erro na requisição de autenticação. Tente novamente.",
+            server_error: "Erro no servidor de autenticação. Tente novamente mais tarde.",
+          };
+
+          const friendlyMessage = errorMessages[params.error as string] || errorDescription;
+          throw new Error(friendlyMessage);
+        }
+
         // Build token request body with PKCE and client_id
         const body = new URLSearchParams();
         body.append("grant_type", "authorization_code");

@@ -11,11 +11,32 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
-const errorMessages = {
-  Configuration: "Há um problema com a configuração do servidor.",
-  AccessDenied: "Você não tem permissão para fazer login.",
-  Verification: "O token de verificação expirou ou já foi usado.",
-  Default: "Ocorreu um erro inesperado durante o login.",
+const errorMessages: Record<string, { title: string; message: string; action?: string }> = {
+  Configuration: {
+    title: "Erro de Configuração",
+    message: "Há um problema com a configuração do servidor de autenticação.",
+    action: "Entre em contato com o suporte técnico.",
+  },
+  AccessDenied: {
+    title: "Acesso Negado",
+    message: "Você não tem permissão para acessar este produto.",
+    action: "Entre em contato com o administrador para solicitar acesso.",
+  },
+  Verification: {
+    title: "Token Expirado",
+    message: "O token de verificação expirou ou já foi usado.",
+    action: "Tente fazer login novamente.",
+  },
+  OAuthCallback: {
+    title: "Erro no Login",
+    message: "Ocorreu um erro durante o processo de autenticação.",
+    action: "Verifique suas permissões e tente novamente.",
+  },
+  Default: {
+    title: "Erro Inesperado",
+    message: "Ocorreu um erro inesperado durante o login.",
+    action: "Tente novamente mais tarde.",
+  },
 };
 
 export default function AuthErrorPage() {
